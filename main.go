@@ -5,21 +5,45 @@ import (
 	"github.com/arzh/clu"
 	"os"
 	"osext"
+	"text/template"
 )
 
 const (
 	helpMsg = `alias - Windows command line aliasing tool
 ----------------------------------
 Create simple cmd aliases that are avaiable without restarting cmd.
-An alias my have multiple calls, each call is given the arguments of the alias (%1-%9)
-If a single call has spaces the call must be wrapped in quotes
+An alias is given the arguments from the cmd (%1-%9)
+If a alias has arguments they must be wrapped in quotes
 
 ex:
 alias gob "go build"
-alias mcd md cd`
+alias rd rmdir`
 
 	errorMsg = "Not enough arguments"
+
+	cmdTemplate = `@echo off
+if "%1"=="/?" (
+	goto :HELP
 )
+
+:STANDARD_CMD
+{{.Command}} %1 %2 %3 %4 %5 %6 %7 %8 %9
+goto :END_SCRIPT
+
+:HELP
+echo. 
+echo 	{{.File}}
+echo -----------------------------------------------------
+echo	Alias for {{.Command}}
+echo.
+
+:END_SCRIPT`
+)
+
+type Alias struct {
+	File    string
+	Command string
+}
 
 func ArgInit(conf clu.ArgConf) {
 	conf.AddFlag("help", "?", "displays help")
@@ -44,26 +68,30 @@ func main() {
 	alias := loosies[0]
 	cmd_str := ""
 	for _, e := range loosies[1:] {
-		cmd_str += e + " %1 %2 %3 %4 %5 %6 %7 %8 %9\n"
+		cmd_str += e + "\n"
 	}
+
+	var a Alias
+	a.File = alias
+	a.Command = cmd_str
 
 	alias_dir, err := osext.ExecutableFolder()
 	if err != nil {
-		fmt.Printf("Couldn't get run directory: %s", err.Error())
+		fmt.Println("Couldn't get run directory: ", err)
 	}
 
 	alias_file := alias_dir + alias + ".cmd"
-	fmt.Println(alias_file)
+	//fmt.Println(alias_file)
 
 	f, err := os.Create(alias_file)
 	if err != nil {
-		fmt.Printf("Error creating file [%s]: %s", alias_file, err.Error())
+		fmt.Printf("Error creating file [%s]: %s\n", alias_file, err)
 	}
 
-	alias_contents := fmt.Sprintf("@echo off\n%s", cmd_str)
-
-	_, err = f.WriteString(alias_contents)
+	t, err := template.New("cmd").Parse(cmdTemplate)
 	if err != nil {
-		fmt.Printf("Failed to write to file [%s]: ", alias_file, err.Error())
+		fmt.Println("Error creating template: ", err)
 	}
+
+	t.Execute(f, a)
 }
